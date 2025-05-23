@@ -1,25 +1,32 @@
 FROM python:3.7.9-buster
 
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
-# https://python-poetry.org/docs/#installation
-ARG POETRY_VERSION=1.1.2
-ARG POETRY_HOME=/usr/local/poetry
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
-ENV PATH="$POETRY_HOME/bin:$PATH"
-ENV PYTHONPATH $PYTHONPATH:$POETRY_HOME/lib
+# Install curl (if not installed) and Poetry
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-COPY pyproject.toml poetry.lock ./
+# Install Poetry (latest recommended method, since your script is deprecated)
+RUN curl -sSL https://install.python-poetry.org | python3 -
+
+ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-COPY poetry.lock pyproject.toml ./
+# Copy only dependency files first for caching
+COPY pyproject.toml poetry.lock* /app/
+
+# Install dependencies (this creates a virtualenv inside /app/.venv)
 RUN poetry config virtualenvs.in-project true \
-    && poetry config virtualenvs.path /app/venv \
-    && poetry install
+ && poetry install --no-root --no-interaction --no-ansi
 
+# Copy app code
 COPY . /app
 
-EXPOSE 8000
-CMD cd Library && poetry run uvicorn --host=0.0.0.0 main:app
+# Set environment variable to use Poetry virtualenv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Expose port 8080 (Fly.io default)
+EXPOSE 8080
+
+# Run uvicorn inside the "Library" folder on port 8080
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
